@@ -1,3 +1,5 @@
+import { UrlWithStringQuery } from "url"
+
 function add(a: number, b: number) {
     return a + b
 }
@@ -359,15 +361,214 @@ type WarnUser = {
 
 
 
-function filter(array, f) {
+type Filter = {
+    <T>(array: T[], f: (item: T) => boolean): T[]
+}
+
+let filter: Filter = (array, f) => {
     let result = []
     for (let i = 0; i < array.length; i++) {
-      let item = array[i]
-      if (f(item)) {
-        result.push(item)
-      }
+        let item = array[i]
+        if (f(item)) {
+            result.push(item)
+        }
     }
     return result
+}
+
+console.log(filter([1, 2, 3], _ => _ > 2))
+console.log(filter(['a', 'b'], _ => _ !== 'b'))
+let names = [
+    { firstName: 'beth' },
+    { firstName: 'caitlyn' },
+    { firstName: 'xin' }
+]
+filter(names, _ => _.firstName.startsWith('b'))
+
+
+/*
+
+type Filter = { 1
+    <T>(array: T[], f: (item: T) => boolean): T[]
   }
+  let filter: Filter = // ...
   
-  filter([1, 2, 3, 4], _ => _ < 3) // evaluates to [1, 2]f
+  type Filter<T> = { 2
+    (array: T[], f: (item: T) => boolean): T[]
+  }
+  let filter: Filter<number> = // ...
+  
+  type Filter = <T>(array: T[], f: (item: T) => boolean) => T[] 3
+  let filter: Filter = // ...
+  
+  type Filter<T> = (array: T[], f: (item: T) => boolean) => T[] 4
+  let filter: Filter<string> = // ...
+  
+  function filter<T>(array: T[], f: (item: T) => boolean): T[] { 5
+    // ...
+  }
+
+
+
+A full call signature, with T scoped to an individual signature. Because T is scoped to a single signature, TypeScript will bind the T in this signature to a concrete type when you call a function of type filter. Each call to filter will get its own binding for T.
+
+2
+A full call signature, with T scoped to all of the signatures. Because T is declared as part of Filter’s type (and not part of a specific signature’s type), TypeScript will bind T when you declare a function of type Filter.
+
+3
+Like 1, but a shorthand call signature instead of a full one.
+
+4
+Like 2, but a shorthand call signature instead of a full one.
+
+5
+A named function call signature, with T scoped to the signature. TypeScript will bind a concrete type to T when you call filter, and each call to filter will get its own binding for T.
+*/
+
+function map(array: unknown[], f: (item: unknown) => unknown): unknown[] {
+    let result = []
+    for (let i = 0; i < array.length; i++) {
+        result[i] = f(array[i])
+    }
+    return result
+}
+
+function map1<T, U>(array: T[], f: (item: T) => U): U[] {
+    let result = []
+    for (let i = 0; i < array.length; i++) {
+        result[i] = f(array[i])
+    }
+    return result
+}
+
+
+
+// Generic Type Inference
+
+function map2<T, U>(array: T[], f: (item: T) => U): U[] {
+    return array.map(f)
+}
+map2(
+    ['a', 'b', 'c'],  // An array of T
+    _ => _ === 'a'    // A function that returns a U
+)
+
+//either annotate every required generic type, or none of them:
+map2<string, boolean>(
+    ['a', 'b', 'c'],
+    _ => _ === 'a'
+)
+
+// map2<string>( // Expected 2 type arguments, but got 1.ts(2558).
+// ['a', 'b', 'c'],
+// _ => _ === 'a'
+// )    
+
+
+// OK, because boolean is assignable to boolean | string
+map2<string, boolean | string>(
+    ['a', 'b', 'c'],
+    _ => _ === 'a'
+)
+
+// map2<string, number>(
+// ['a', 'b', 'c'],
+// _ => _ === 'a'  // Error TS2322: Type 'boolean' is not assignable
+// )                 // to type 'number'.
+
+
+let promise = new Promise(resolve =>
+    resolve(45)
+)
+// promise.then(result => result * 4)//'result' is of type 'unknown'.ts(18046)
+
+
+let promise2 = new Promise<number>(resolve =>
+    resolve(45)
+)
+promise2.then(result => result * 4)
+
+
+//Generic Type Aliases
+
+type MyEvent<T> = {
+    target: T
+    type: string
+}
+
+
+
+//Bounded Polymorphism
+
+
+{
+    type TreeNode = {
+        value: string
+    }
+    type LeafNode = TreeNode & {
+        isLeaf: true
+    }
+    type InnerNode = TreeNode & {
+        children: [TreeNode] | [TreeNode, TreeNode]
+    }
+
+    let a: TreeNode = { value: 'a' }
+    let b: LeafNode = { value: 'b', isLeaf: true }
+    let c: InnerNode = { value: 'c', children: [b] }
+
+    function mapNode<T extends TreeNode>(
+        node: T,
+        f: (value: string) => string
+    ): T {
+        return {
+            ...node,
+            value: f(node.value)
+            /*
+            The returned object is created by spreading the properties of the node object (...node), and then overriding the value property with the result of calling the function f with node.value as the argument (f(node.value)).
+            */
+        }
+    }
+
+    let a1 = mapNode(a, _ => _.toUpperCase()) // TreeNode
+    let b1 = mapNode(b, _ => _.toUpperCase()) // LeafNode
+    let c1 = mapNode(c, _ => _.toUpperCase()) // InnerNode
+
+}
+
+//Bounded polymorphism with multiple constraints
+{
+    type HasSide = { numberOfSides: number }
+    type SidesHaveLength = { sideLenght: number }
+
+    function logPerimeter<T extends HasSide & SidesHaveLength>(s: T): T {
+        console.log("Perimeter " + s.sideLenght * s.numberOfSides)
+        return s
+    }
+
+    type Square = HasSide & SidesHaveLength
+
+    let square: Square = { numberOfSides: 4, sideLenght: 3 }
+    logPerimeter(square)
+
+}
+// Using bounded polymorphism to model arity
+// function call(
+//     f: (...args: unknown[]) => unknown,
+//     ...args: unknown[]
+// ): unknown {
+//     return f(...args)
+// }
+
+function fill(length: number, value: string): string[] {
+    return Array.from({ length }, () => value)
+}
+
+function call<T extends unknown[], R>(
+    f: (...args: T) => R,
+    ...args: T
+): R {
+    return f(...args)
+}
+
+console.log(call(fill, 10, 'a')) // evaluates to an array of 10 'a's
+
